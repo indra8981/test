@@ -115,7 +115,7 @@ python-devtools==2
 pytz==2018.3
 pyupgrade==1.25.1
 pyxdg==0.25
-PyYAML==3.12
+PyYAML==5.1
 readme-renderer==24.0
 regex==2019.12.20
 reportlab==3.4.0
