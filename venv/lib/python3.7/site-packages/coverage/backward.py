@@ -1,11 +1,12 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://bitbucket.org/ned/coveragepy/src/default/NOTICE.txt
+# For details: https://github.com/nedbat/coveragepy/blob/master/NOTICE.txt
 
 """Add things to old Pythons so I can pretend they are newer."""
 
-# This file does tricky stuff, so disable a pylint warning.
+# This file's purpose is to provide modules to be imported from here.
 # pylint: disable=unused-import
 
+import os
 import sys
 
 from coverage import env
@@ -38,17 +39,31 @@ try:
 except NameError:
     unicode_class = str
 
-# Where do pickles come from?
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
 # range or xrange?
 try:
     range = xrange      # pylint: disable=redefined-builtin
 except NameError:
     range = range
+
+try:
+    from itertools import zip_longest
+except ImportError:
+    from itertools import izip_longest as zip_longest
+
+# Where do we get the thread id from?
+try:
+    from thread import get_ident as get_thread_id
+except ImportError:
+    from threading import get_ident as get_thread_id
+
+try:
+    os.PathLike
+except AttributeError:
+    # This is Python 2 and 3
+    path_types = (bytes, string_class, unicode_class)
+else:
+    # 3.6+
+    path_types = (bytes, str, os.PathLike)
 
 # shlex.quote is new, but there's an undocumented implementation in "pipes",
 # who knew!?
@@ -58,6 +73,11 @@ except ImportError:
     # Useful function, available under a different (undocumented) name
     # in Python versions earlier than 3.3.
     from pipes import quote as shlex_quote
+
+try:
+    import reprlib
+except ImportError:
+    import repr as reprlib
 
 # A function to iterate listlessly over a dict's items, and one to get the
 # items as a list.
@@ -101,9 +121,17 @@ if env.PY3:
         """Convert string `s` to bytes."""
         return s.encode('utf8')
 
+    def to_string(b):
+        """Convert bytes `b` to string."""
+        return b.decode('utf8')
+
     def binary_bytes(byte_values):
         """Produce a byte string with the ints from `byte_values`."""
         return bytes(byte_values)
+
+    def byte_to_int(byte):
+        """Turn a byte indexed from a bytes object into an int."""
+        return byte
 
     def bytes_to_ints(bytes_value):
         """Turn a bytes object into a sequence of ints."""
@@ -115,9 +143,17 @@ else:
         """Convert string `s` to bytes (no-op in 2.x)."""
         return s
 
+    def to_string(b):
+        """Convert bytes `b` to string."""
+        return b
+
     def binary_bytes(byte_values):
         """Produce a byte string with the ints from `byte_values`."""
         return "".join(chr(b) for b in byte_values)
+
+    def byte_to_int(byte):
+        """Turn a byte indexed from a bytes object into an int."""
+        return ord(byte)
 
     def bytes_to_ints(bytes_value):
         """Turn a bytes object into a sequence of ints."""
@@ -155,6 +191,32 @@ except AttributeError:
     PYC_MAGIC_NUMBER = imp.get_magic()
 
 
+def code_object(fn):
+    """Get the code object from a function."""
+    try:
+        return fn.func_code
+    except AttributeError:
+        return fn.__code__
+
+
+try:
+    from types import SimpleNamespace
+except ImportError:
+    # The code from https://docs.python.org/3/library/types.html#types.SimpleNamespace
+    class SimpleNamespace:
+        """Python implementation of SimpleNamespace, for Python 2."""
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        def __repr__(self):
+            keys = sorted(self.__dict__)
+            items = ("{}={!r}".format(k, self.__dict__[k]) for k in keys)
+            return "{}({})".format(type(self).__name__, ", ".join(items))
+
+        def __eq__(self, other):
+            return self.__dict__ == other.__dict__
+
+
 def invalidate_import_caches():
     """Invalidate any import caches that may or may not exist."""
     if importlib and hasattr(importlib, "invalidate_caches"):
@@ -177,6 +239,7 @@ def import_local_file(modname, modfile=None):
     if modfile is None:
         modfile = modname + '.py'
     if SourceFileLoader:
+        # pylint: disable=no-value-for-parameter, deprecated-method
         mod = SourceFileLoader(modname, modfile).load_module()
     else:
         for suff in imp.get_suffixes():                 # pragma: part covered

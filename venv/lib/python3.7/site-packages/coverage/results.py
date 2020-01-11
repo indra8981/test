@@ -1,34 +1,36 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://bitbucket.org/ned/coveragepy/src/default/NOTICE.txt
+# For details: https://github.com/nedbat/coveragepy/blob/master/NOTICE.txt
 
 """Results of coverage measurement."""
 
 import collections
 
 from coverage.backward import iitems
-from coverage.misc import contract, format_lines, SimpleRepr
+from coverage.debug import SimpleReprMixin
+from coverage.misc import contract, CoverageException, nice_pair
 
 
 class Analysis(object):
     """The results of analyzing a FileReporter."""
 
-    def __init__(self, data, file_reporter):
+    def __init__(self, data, file_reporter, file_mapper):
         self.data = data
         self.file_reporter = file_reporter
-        self.filename = self.file_reporter.filename
+        self.filename = file_mapper(self.file_reporter.filename)
         self.statements = self.file_reporter.lines()
         self.excluded = self.file_reporter.excluded_lines()
 
         # Identify missing statements.
         executed = self.data.lines(self.filename) or []
         executed = self.file_reporter.translate_lines(executed)
-        self.missing = self.statements - executed
+        self.executed = executed
+        self.missing = self.statements - self.executed
 
         if self.data.has_arcs():
             self._arc_possibilities = sorted(self.file_reporter.arcs())
             self.exit_counts = self.file_reporter.exit_counts()
             self.no_branch = self.file_reporter.no_branch_lines()
-            n_branches = self.total_branches()
+            n_branches = self._total_branches()
             mba = self.missing_branch_arcs()
             n_partial_branches = sum(len(v) for k,v in iitems(mba) if k not in self.missing)
             n_missing_branches = sum(len(v) for k,v in iitems(mba))
@@ -48,28 +50,38 @@ class Analysis(object):
             n_missing_branches=n_missing_branches,
         )
 
-    def missing_formatted(self):
+    def missing_formatted(self, branches=False):
         """The missing line numbers, formatted nicely.
 
         Returns a string like "1-2, 5-11, 13-14".
 
+        If `branches` is true, includes the missing branch arcs also.
+
         """
-        return format_lines(self.statements, self.missing)
+        if branches and self.has_arcs():
+            arcs = iitems(self.missing_branch_arcs())
+        else:
+            arcs = None
+
+        return format_lines(self.statements, self.missing, arcs=arcs)
 
     def has_arcs(self):
         """Were arcs measured in this result?"""
         return self.data.has_arcs()
 
+    @contract(returns='list(tuple(int, int))')
     def arc_possibilities(self):
         """Returns a sorted list of the arcs in the code."""
         return self._arc_possibilities
 
+    @contract(returns='list(tuple(int, int))')
     def arcs_executed(self):
         """Returns a sorted list of the arcs actually executed in the code."""
         executed = self.data.arcs(self.filename) or []
         executed = self.file_reporter.translate_arcs(executed)
         return sorted(executed)
 
+    @contract(returns='list(tuple(int, int))')
     def arcs_missing(self):
         """Returns a sorted list of the arcs in the code not executed."""
         possible = self.arc_possibilities()
@@ -81,24 +93,7 @@ class Analysis(object):
         )
         return sorted(missing)
 
-    def arcs_missing_formatted(self):
-        """The missing branch arcs, formatted nicely.
-
-        Returns a string like "1->2, 1->3, 16->20". Omits any mention of
-        branches from missing lines, so if line 17 is missing, then 17->18
-        won't be included.
-
-        """
-        arcs = self.missing_branch_arcs()
-        missing = self.missing
-        line_exits = sorted(iitems(arcs))
-        pairs = []
-        for line, exits in line_exits:
-            for ex in sorted(exits):
-                if line not in missing:
-                    pairs.append("%d->%s" % (line, (ex if ex > 0 else "exit")))
-        return ', '.join(pairs)
-
+    @contract(returns='list(tuple(int, int))')
     def arcs_unpredicted(self):
         """Returns a sorted list of the executed arcs missing from the code."""
         possible = self.arc_possibilities()
@@ -116,14 +111,15 @@ class Analysis(object):
         )
         return sorted(unpredicted)
 
-    def branch_lines(self):
+    def _branch_lines(self):
         """Returns a list of line numbers that have more than one exit."""
         return [l1 for l1,count in iitems(self.exit_counts) if count > 1]
 
-    def total_branches(self):
+    def _total_branches(self):
         """How many total branches are there?"""
         return sum(count for count in self.exit_counts.values() if count > 1)
 
+    @contract(returns='dict(int: list(int))')
     def missing_branch_arcs(self):
         """Return arcs that weren't executed from branch lines.
 
@@ -131,13 +127,14 @@ class Analysis(object):
 
         """
         missing = self.arcs_missing()
-        branch_lines = set(self.branch_lines())
+        branch_lines = set(self._branch_lines())
         mba = collections.defaultdict(list)
         for l1, l2 in missing:
             if l1 in branch_lines:
                 mba[l1].append(l2)
         return mba
 
+    @contract(returns='dict(int: tuple(int, int))')
     def branch_stats(self):
         """Get stats about branches.
 
@@ -147,7 +144,7 @@ class Analysis(object):
 
         missing_arcs = self.missing_branch_arcs()
         stats = {}
-        for lnum in self.branch_lines():
+        for lnum in self._branch_lines():
             exits = self.exit_counts[lnum]
             try:
                 missing = len(missing_arcs[lnum])
@@ -157,7 +154,7 @@ class Analysis(object):
         return stats
 
 
-class Numbers(SimpleRepr):
+class Numbers(SimpleReprMixin):
     """The numerical results of measuring coverage.
 
     This holds the basic statistics from `Analysis`, and is used to roll
@@ -271,6 +268,61 @@ class Numbers(SimpleRepr):
         return NotImplemented
 
 
+def _line_ranges(statements, lines):
+    """Produce a list of ranges for `format_lines`."""
+    statements = sorted(statements)
+    lines = sorted(lines)
+
+    pairs = []
+    start = None
+    lidx = 0
+    for stmt in statements:
+        if lidx >= len(lines):
+            break
+        if stmt == lines[lidx]:
+            lidx += 1
+            if not start:
+                start = stmt
+            end = stmt
+        elif start:
+            pairs.append((start, end))
+            start = None
+    if start:
+        pairs.append((start, end))
+    return pairs
+
+
+def format_lines(statements, lines, arcs=None):
+    """Nicely format a list of line numbers.
+
+    Format a list of line numbers for printing by coalescing groups of lines as
+    long as the lines represent consecutive statements.  This will coalesce
+    even if there are gaps between statements.
+
+    For example, if `statements` is [1,2,3,4,5,10,11,12,13,14] and
+    `lines` is [1,2,5,10,11,13,14] then the result will be "1-2, 5-11, 13-14".
+
+    Both `lines` and `statements` can be any iterable. All of the elements of
+    `lines` must be in `statements`, and all of the values must be positive
+    integers.
+
+    If `arcs` is provided, they are (start,[end,end,end]) pairs that will be
+    included in the output as long as start isn't in `lines`.
+
+    """
+    line_items = [(pair[0], nice_pair(pair)) for pair in _line_ranges(statements, lines)]
+    if arcs:
+        line_exits = sorted(arcs)
+        for line, exits in line_exits:
+            for ex in sorted(exits):
+                if line not in lines:
+                    dest = (ex if ex > 0 else "exit")
+                    line_items.append((line, "%d->%s" % (line, dest)))
+
+    ret = ', '.join(t[-1] for t in sorted(line_items))
+    return ret
+
+
 @contract(total='number', fail_under='number', precision=int, returns=bool)
 def should_fail_under(total, fail_under, precision):
     """Determine if a total should fail due to fail-under.
@@ -282,6 +334,11 @@ def should_fail_under(total, fail_under, precision):
     Returns True if the total should fail.
 
     """
+    # We can never achieve higher than 100% coverage, or less than zero.
+    if not (0 <= fail_under <= 100.0):
+        msg = "fail_under={} is invalid. Must be between 0 and 100.".format(fail_under)
+        raise CoverageException(msg)
+
     # Special case for fail_under=100, it must really be 100.
     if fail_under == 100.0 and total != 100.0:
         return True

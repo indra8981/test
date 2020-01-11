@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://bitbucket.org/ned/coveragepy/src/default/NOTICE.txt
+# For details: https://github.com/nedbat/coveragepy/blob/master/NOTICE.txt
 
 """Source file annotation for coverage.py."""
 
@@ -8,13 +8,13 @@ import os
 import re
 
 from coverage.files import flat_rootname
-from coverage.misc import isolate_module
-from coverage.report import Reporter
+from coverage.misc import ensure_dir, isolate_module
+from coverage.report import get_analysis_to_report
 
 os = isolate_module(os)
 
 
-class AnnotateReporter(Reporter):
+class AnnotateReporter(object):
     """Generate annotated source files showing line coverage.
 
     This reporter creates annotated copies of the measured source files. Each
@@ -36,8 +36,9 @@ class AnnotateReporter(Reporter):
 
     """
 
-    def __init__(self, coverage, config):
-        super(AnnotateReporter, self).__init__(coverage, config)
+    def __init__(self, coverage):
+        self.coverage = coverage
+        self.config = self.coverage.config
         self.directory = None
 
     blank_re = re.compile(r"\s*(#|$)")
@@ -49,7 +50,10 @@ class AnnotateReporter(Reporter):
         See `coverage.report()` for arguments.
 
         """
-        self.report_files(self.annotate_file, morfs, directory)
+        self.directory = directory
+        self.coverage.get_data()
+        for fr, analysis in get_analysis_to_report(self.coverage, morfs):
+            self.annotate_file(fr, analysis)
 
     def annotate_file(self, fr, analysis):
         """Annotate a single file.
@@ -62,6 +66,7 @@ class AnnotateReporter(Reporter):
         excluded = sorted(analysis.excluded)
 
         if self.directory:
+            ensure_dir(self.directory)
             dest_file = os.path.join(self.directory, flat_rootname(fr.relative_filename()))
             if dest_file.endswith("_py"):
                 dest_file = dest_file[:-3] + ".py"

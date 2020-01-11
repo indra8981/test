@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://bitbucket.org/ned/coveragepy/src/default/NOTICE.txt
+# For details: https://github.com/nedbat/coveragepy/blob/master/NOTICE.txt
 
 """Python source expertise for coverage.py"""
 
@@ -97,7 +97,7 @@ def get_zip_bytes(filename):
 
 
 def source_for_file(filename):
-    """Return the source file for `filename`.
+    """Return the source filename for `filename`.
 
     Given a file name being traced, return the best guess as to the source
     file to attribute it to.
@@ -129,22 +129,28 @@ def source_for_file(filename):
     return filename
 
 
+def source_for_morf(morf):
+    """Get the source filename for the module-or-file `morf`."""
+    if hasattr(morf, '__file__') and morf.__file__:
+        filename = morf.__file__
+    elif isinstance(morf, types.ModuleType):
+        # A module should have had .__file__, otherwise we can't use it.
+        # This could be a PEP-420 namespace package.
+        raise CoverageException("Module {} has no file".format(morf))
+    else:
+        filename = morf
+
+    filename = source_for_file(files.unicode_filename(filename))
+    return filename
+
+
 class PythonFileReporter(FileReporter):
     """Report support for a Python file."""
 
     def __init__(self, morf, coverage=None):
         self.coverage = coverage
 
-        if hasattr(morf, '__file__') and morf.__file__:
-            filename = morf.__file__
-        elif isinstance(morf, types.ModuleType):
-            # A module should have had .__file__, otherwise we can't use it.
-            # This could be a PEP-420 namespace package.
-            raise CoverageException("Module {0} has no file".format(morf))
-        else:
-            filename = morf
-
-        filename = source_for_file(files.unicode_filename(filename))
+        filename = source_for_morf(morf)
 
         super(PythonFileReporter, self).__init__(files.canonical_filename(filename))
 
@@ -160,11 +166,10 @@ class PythonFileReporter(FileReporter):
 
         self._source = None
         self._parser = None
-        self._statements = None
         self._excluded = None
 
     def __repr__(self):
-        return "<PythonFileReporter {0!r}>".format(self.filename)
+        return "<PythonFileReporter {!r}>".format(self.filename)
 
     @contract(returns='unicode')
     def relative_filename(self):

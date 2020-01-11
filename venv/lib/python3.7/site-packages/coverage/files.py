@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://bitbucket.org/ned/coveragepy/src/default/NOTICE.txt
+# For details: https://github.com/nedbat/coveragepy/blob/master/NOTICE.txt
 
 """File wrangling."""
 
@@ -59,6 +59,7 @@ def canonical_filename(filename):
 
     """
     if filename not in CANONICAL_FILENAME_CACHE:
+        cf = filename
         if not os.path.isabs(filename):
             for path in [os.curdir] + sys.path:
                 if path is None:
@@ -69,9 +70,9 @@ def canonical_filename(filename):
                 except UnicodeError:
                     exists = False
                 if exists:
-                    filename = f
+                    cf = f
                     break
-        cf = abs_file(filename)
+        cf = abs_file(cf)
         CANONICAL_FILENAME_CACHE[filename] = cf
     return CANONICAL_FILENAME_CACHE[filename]
 
@@ -122,7 +123,9 @@ if env.WINDOWS:
             else:
                 try:
                     files = os.listdir(head)
-                except OSError:
+                except Exception:
+                    # This will raise OSError, or this bizarre TypeError:
+                    # https://bugs.python.org/issue1776160
                     files = []
                 _ACTUAL_PATH_LIST_CACHE[head] = files
             normtail = os.path.normcase(tail)
@@ -156,9 +159,8 @@ else:
 
 
 @contract(returns='unicode')
-def abs_file(filename):
-    """Return the absolute normalized form of `filename`."""
-    path = os.path.expandvars(os.path.expanduser(filename))
+def abs_file(path):
+    """Return the absolute normalized form of `path`."""
     try:
         path = os.path.realpath(path)
     except UnicodeError:
@@ -167,6 +169,13 @@ def abs_file(filename):
     path = actual_path(path)
     path = unicode_filename(path)
     return path
+
+
+def python_reported_file(filename):
+    """Return the string as Python would describe this file name."""
+    if env.PYBEHAVIOR.report_absolute_files:
+        filename = os.path.abspath(filename)
+    return filename
 
 
 RELATIVE_DIR = None
@@ -335,7 +344,7 @@ class PathAliases(object):
     def pprint(self):       # pragma: debugging
         """Dump the important parts of the PathAliases, for debugging."""
         for regex, result in self.aliases:
-            print("{0!r} --> {1!r}".format(regex.pattern, result))
+            print("{!r} --> {!r}".format(regex.pattern, result))
 
     def add(self, pattern, result):
         """Add the `pattern`/`result` pair to the list of aliases.

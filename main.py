@@ -1,10 +1,10 @@
 from typing import List
 
-import psycopg2
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 
-from interview import schemas, models, crud
+from interview import schemas
+from interview import crud, models
 from interview.database import SessionLocal, engine
 
 from numpy import genfromtxt
@@ -58,7 +58,7 @@ def loadfile(load_file):
 loadfile(load_file)
 
 
-@app.post("/post_location/", response_model=schemas.Place)
+@app.post("/post_location", response_model=schemas.Place)
 def create_user(plac: schemas.PlaceCreate, db: Session = Depends(get_db)):
     db_user = crud.get_place_by_pin(db, pin=plac.pin, lati=plac.latitude, longi=plac.longitude)
     if db_user:
@@ -66,9 +66,25 @@ def create_user(plac: schemas.PlaceCreate, db: Session = Depends(get_db)):
     return crud.create_place(db=db, plac=plac)
 
 
-@app.get("/get_location/{latitude}&{longitude}", response_model=schemas.Place)
+@app.get("/get_location/{latitude}&{longitude}", response_model=List[schemas.Place])
 def read_user(latitude: float, longitude: float, db: Session = Depends(get_db)):
-    db_user = crud.get_place_by_longitude_latitude(db, lati=latitude, longi=longitude)
-    if db_user is None:
+    db_user = crud.get_place_by_latitude_longitude(db, lati=latitude, longi=longitude)
+    if len(db_user) == 0:
+        raise HTTPException(status_code=404, detail="Place not Found")
+    return db_user
+
+
+@app.get("/get_using_self/{latitude}&{longitude}", response_model=List[schemas.Place])
+def read_user(latitude: float, longitude: float, db: Session = Depends(get_db)):
+    db_user = crud.get_places_by_distance_me(db, lati=latitude, longi=longitude)
+    if len(db_user) == 0:
+        raise HTTPException(status_code=404, detail="Place not Found")
+    return db_user
+
+
+@app.get("/get_using_postgres/{latitude}&{longitude}", response_model=List[schemas.Place])
+def read_user(latitude: float, longitude: float, db: Session = Depends(get_db)):
+    db_user = crud.get_places_by_distance_postgresql(db, lati=latitude, longi=longitude)
+    if len(db_user) == 0:
         raise HTTPException(status_code=404, detail="Place not Found")
     return db_user

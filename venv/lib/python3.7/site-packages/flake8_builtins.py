@@ -119,14 +119,15 @@ class BuiltinsChecker(object):
             elif isinstance(item, ast.Name) and \
                     item.id in BUILTINS:
                 yield self.error(item, message=msg, variable=item.id)
-            elif PY3 and \
-                    isinstance(item, ast.Starred) and \
-                    item.value.id in BUILTINS:
-                yield self.error(
-                    statement,
-                    message=msg,
-                    variable=item.value.id,
-                )
+            elif PY3 and isinstance(item, ast.Starred):
+                if hasattr(item.value, 'id') and item.value.id in BUILTINS:
+                    yield self.error(
+                        statement,
+                        message=msg,
+                        variable=item.value.id,
+                    )
+                elif hasattr(item.value, 'elts'):
+                    stack.extend(list(item.value.elts))
 
     def check_function_definition(self, statement):
         if statement.name in BUILTINS:
@@ -160,10 +161,14 @@ class BuiltinsChecker(object):
             elif isinstance(item, ast.Name) and \
                     item.id in BUILTINS:
                 yield self.error(statement, variable=item.id)
-            elif PY3 and \
-                    isinstance(item, ast.Starred) and \
-                    item.value.id in BUILTINS:
-                yield self.error(statement, variable=item.value.id)
+            elif PY3 and isinstance(item, ast.Starred):
+                if hasattr(item.value, 'id') and item.value.id in BUILTINS:
+                    yield self.error(
+                        statement,
+                        variable=item.value.id,
+                    )
+                elif hasattr(item.value, 'elts'):
+                    stack.extend(list(item.value.elts))
 
     def check_with(self, statement):
         if not PY3:
