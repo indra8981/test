@@ -74,17 +74,17 @@ def read_user(latitude: float, longitude: float, db: Session = Depends(get_db)):
     return db_user
 
 
-@app.get("/get_using_self/{latitude}&{longitude}", response_model=List[schemas.Place])
-def read_user(latitude: float, longitude: float, db: Session = Depends(get_db)):
-    db_user = crud.get_places_by_distance_me(db, lati=latitude, longi=longitude)
+@app.get("/get_using_self/{latitude}&{longitude}&{radius}", response_model=List[schemas.Place])
+def read_user(latitude: float, longitude: float, radius: float, db: Session = Depends(get_db)):
+    db_user = crud.get_places_by_distance_me(db, lati=latitude, longi=longitude, radi=radius)
     if len(db_user) == 0:
         raise HTTPException(status_code=404, detail="Place not Found")
     return db_user
 
 
-@app.get("/get_using_postgres/{latitude}&{longitude}", response_model=List[schemas.Place])
-def read_user(latitude: float, longitude: float, db: Session = Depends(get_db)):
-    db_user = crud.get_places_by_distance_postgresql(db, lati=latitude, longi=longitude)
+@app.get("/get_using_postgres/{latitude}&{longitude}&{radius}", response_model=List[schemas.Place])
+def read_user(latitude: float, longitude: float, radius: float, db: Session = Depends(get_db)):
+    db_user = crud.get_places_by_distance_postgresql(db, lati=latitude, longi=longitude, radi=radius)
     if len(db_user) == 0:
         raise HTTPException(status_code=404, detail="Place not Found")
     return db_user

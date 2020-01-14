@@ -1,10 +1,7 @@
 from sqlalchemy.orm import Session
-
 from . import schemas, models
 from sqlalchemy import func
 import math
-import sqlalchemy
-from sqlalchemy import tuple_
 
 
 def distance(origin, destination):
@@ -21,19 +18,16 @@ def distance(origin, destination):
 
 
 def check_near(db: Session, lati: float, longi: float):
-    all = db.query(models.Place.latitude, models.Place.longitude).all()
+    all = db.query(models.Place.latitude, models.Place.longitude, models.Place.pin).all()
     dist = distance_me(all, lati, longi, 1)
     return len(dist)
 
 
-def get_places_by_distance_me(db: Session, lati: float, longi: float):
-    all = db.query(models.Place.latitude, models.Place.longitude).all()
-    all_points = distance_me(all, lati, longi, 5)
-    return actual_places(db=db, all_points=all_points)
-    # print(latt)
-    # print(long)
-    # return db.query(models.Place).filter(tuple_(models.Place.latitude,models.Place.longitude)._in(all_points))
-    # return db.query(models.Place).filter(models.Place.latitude._in(latt), models.Place.longitude._in(long)).all()
+def get_places_by_distance_me(db: Session, lati: float, longi: float, radi: float):
+    all = db.query(models.Place.latitude, models.Place.longitude, models.Place.pin).all()
+    all_points = distance_me(all, lati, longi, radi)
+    actual = db.query(models.Place).filter(models.Place.pin.in_(all_points)).all()
+    return actual
 
 
 def actual_places(db: Session, all_points):
@@ -46,10 +40,12 @@ def actual_places(db: Session, all_points):
     return total
 
 
-def get_places_by_distance_postgresql(db: Session, lati: float, longi: float):
-    all = db.query(models.Place.latitude, models.Place.longitude).all()
-    all_points = distance_postgre(all, lati, longi, 5000)
-    return actual_places(db=db, all_points=all_points)
+def get_places_by_distance_postgresql(db: Session, lati: float, longi: float, radi: float):
+    tomiles = radi * 1000
+    box = func.earth_box(func.ll_to_earth(lati, longi), tomiles)
+    para = func.ll_to_earth(models.Place.latitude, models.Place.longitude)
+    all = db.query(models.Place).filter(box.op("@>")(para)).all()
+    return all
 
 
 def distance_me(points, lati, longi, dist):
@@ -57,27 +53,12 @@ def distance_me(points, lati, longi, dist):
     for i in range(len(points)):
         two_pair_distance = distance((lati, longi), (float(points[i][0]), float(points[i][1])))
         if (two_pair_distance <= dist):
-            all_point.append((float(points[i][0]), float(points[i][1])))
+            all_point.append(points[i][2])
     return all_point
 
-
-# expr = func.is_equal("a", "b").as_comparison(1, 2)
-def distance_postgre(points, lati, longi, dist):
-    all_point = []
-    # for i in range(len(points)):
-    #     print(func.ll_to_earth(lati, longi))
-    two_pair_distance = func.earth_distance(func.ll_to_earth(models.Place.latitude, models.Place.longitude),
-                                            func.ll_to_earth(float(lati), float(longi)))
-    # if (two_pair_distance <= dist):
-    all_point.append(two_pair_distance <= dist)
-    for i in all_point:
-        print(i)
-    print(all_point)
-    return all_point
 
 
 def get_place_by_latitude_longitude(db: Session, lati: float, longi: float):
-    # print(db.query(models.Place).filter(models.Place.latitude == lati, models.Place.longitude == longi).all())
     return db.query(models.Place).filter(models.Place.latitude == lati, models.Place.longitude == longi).all()
 
 
