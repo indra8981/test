@@ -49,7 +49,7 @@ GitPython==3.0.5
 h11==0.9.0
 h2==3.1.1
 hpack==3.0.0
-httplib2==0.15.0
+httplib2==0.18.0
 Hypercorn==0.9.0
 hyperframe==5.2.0
 idna==2.8
